@@ -32,4 +32,10 @@ jobs:
         with:
           name: test-report
           path: build/reports/tests/test/
+      - name: Show reports tree (debug)
+      if: always()
+      shell: pwsh
+      run: |
+        Get-ChildItem -Recurse -Depth 3 build\reports | Format-List FullName
+        Get-ChildItem -Recurse -Depth 3 build\test-results | Format-List FullName
 
