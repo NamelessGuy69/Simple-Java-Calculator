@@ -10,18 +10,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      - name: Show repo root (debug)
+      - name: Install Gradle (fallback)
+        shell: pwsh
+        run: choco install gradle -y
+
+      - name: Build & Test with global Gradle
         shell: pwsh
         run: |
-          Get-Location
-          dir -Force
-          if (-not (Test-Path ./gradlew.bat)) { throw "gradlew.bat missing in repo root" }
-
-      - name: Build & Test
-        shell: pwsh
-        run: ./gradlew.bat clean test --stacktrace --info
+          gradle --version
+          gradle clean test --stacktrace --info
 
       - name: Upload test report (HTML)
         if: always() && ${{ hashFiles('build/reports/tests/test/**') != '' }}
