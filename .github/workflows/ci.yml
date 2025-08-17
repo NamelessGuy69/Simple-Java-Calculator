@@ -1,7 +1,7 @@
 name: CI
 
 on:
-  push: 
+  push:
   pull_request:
 
 jobs:
@@ -19,23 +19,39 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # On Windows, prefer gradlew.bat (PowerShell shell by default)
+      - name: Verify wrapper exists (fail fast)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ./gradlew.bat)) { Write-Error "gradlew.bat missing in repo root"; exit 1 }
+          if (-not (Test-Path ./gradle/wrapper/gradle-wrapper.jar)) { Write-Error "gradle-wrapper.jar missing"; exit 1 }
+
       - name: Build & Test
         shell: pwsh
         run: |
-          .\gradlew --version
-          .\gradlew clean test --stacktrace --info
+          ./gradlew.bat --version
+          ./gradlew.bat clean test --stacktrace --info
 
-      - name: Upload test report (always)
+      - name: Show reports tree (debug)
         if: always()
+        shell: pwsh
+        run: |
+          Write-Host "Reports under build/reports:"
+          Get-ChildItem -Recurse -Depth 3 build\reports | ForEach-Object { $_.FullName }
+          Write-Host "`nRaw test-results under build/test-results:"
+          Get-ChildItem -Recurse -Depth 3 build\test-results | ForEach-Object { $_.FullName }
+
+      # Upload HTML report only if it exists (avoids 'No files were found' warning)
+      - name: Upload test report (HTML)
+        if: always() && ${{ hashFiles('build/reports/tests/test/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-report
           path: build/reports/tests/test/
-      - name: Show reports tree (debug)
-      if: always()
-      shell: pwsh
-      run: |
-        Get-ChildItem -Recurse -Depth 3 build\reports | Format-List FullName
-        Get-ChildItem -Recurse -Depth 3 build\test-results | Format-List FullName
 
+      # Also upload raw XML results if present (useful for debugging)
+      - name: Upload test results (XML)
+        if: always() && ${{ hashFiles('build/test-results/test/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-xml
+          path: build/test-results/test/
