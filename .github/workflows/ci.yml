@@ -1,19 +1,16 @@
 name: CI
-
-on:
-  push:
-  pull_request:
+on: [push, pull_request]
 
 jobs:
   build-test:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app    # <-- change to your subfolder name
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
@@ -22,7 +19,7 @@ jobs:
       - name: Verify wrapper exists (fail fast)
         shell: pwsh
         run: |
-          if (-not (Test-Path ./gradlew.bat)) { Write-Error "gradlew.bat missing in repo root"; exit 1 }
+          if (-not (Test-Path ./gradlew.bat)) { Write-Error "gradlew.bat missing in working directory"; exit 1 }
           if (-not (Test-Path ./gradle/wrapper/gradle-wrapper.jar)) { Write-Error "gradle-wrapper.jar missing"; exit 1 }
 
       - name: Build & Test
@@ -31,27 +28,9 @@ jobs:
           ./gradlew.bat --version
           ./gradlew.bat clean test --stacktrace --info
 
-      - name: Show reports tree (debug)
-        if: always()
-        shell: pwsh
-        run: |
-          Write-Host "Reports under build/reports:"
-          Get-ChildItem -Recurse -Depth 3 build\reports | ForEach-Object { $_.FullName }
-          Write-Host "`nRaw test-results under build/test-results:"
-          Get-ChildItem -Recurse -Depth 3 build\test-results | ForEach-Object { $_.FullName }
-
-      # Upload HTML report only if it exists (avoids 'No files were found' warning)
       - name: Upload test report (HTML)
         if: always() && ${{ hashFiles('build/reports/tests/test/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-report
           path: build/reports/tests/test/
-
-      # Also upload raw XML results if present (useful for debugging)
-      - name: Upload test results (XML)
-        if: always() && ${{ hashFiles('build/test-results/test/**') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-xml
-          path: build/test-results/test/
