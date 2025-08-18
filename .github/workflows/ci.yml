@@ -4,21 +4,24 @@ on: [push, pull_request]
 jobs:
   build-test:
     runs-on: windows-latest
+    env:
+      PROJECT_DIR: .   # change if your Gradle project is in a subfolder
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Gradle 9.0 globally
+
+      - name: Verify wrapper is 9.0
         shell: pwsh
-        run: choco install gradle --version=9.0 -y
-      - name: Build & Test
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          $out = ./gradlew.bat --version
+          $out
+          if ($out -notmatch 'Gradle 9\.0') { throw "Wrapper is not Gradle 9.0" }
+
+      - name: Build & Test (wrapper 9.0)
         shell: pwsh
-        run: gradle clean test --stacktrace --info
-      - name: Upload test report (HTML)
-        if: always() && ${{ hashFiles('build/reports/tests/test/**') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report
-          path: build/reports/tests/test/
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: ./gradlew.bat clean test --stacktrace --info
