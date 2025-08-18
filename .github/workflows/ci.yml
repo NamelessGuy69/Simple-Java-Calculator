@@ -4,6 +4,8 @@ on: [push, pull_request]
 jobs:
   build-test:
     runs-on: windows-latest
+    env:
+      PROJECT_DIR: .   # change to your subfolder if needed, e.g. 'simple-java-calculator'
     steps:
       - uses: actions/checkout@v4
 
@@ -19,13 +21,30 @@ jobs:
           choco install gradle --version=8.7 -y
           gradle --version
 
+      - name: Show project tree (debug)
+        shell: pwsh
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          Get-Location
+          dir -Force
+          if (-not (Test-Path ./build.gradle)) { throw "build.gradle not found in $PWD" }
+
       - name: Build & Test
         shell: pwsh
-        run: gradle clean test --stacktrace --info
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          gradle clean test --stacktrace --info
 
-      - name: Upload test report (HTML)
-        if: always() && ${{ hashFiles('build/reports/tests/test/**') != '' }}
+      - name: Upload test report (HTML) if present
+        if: always() && ${{ hashFiles(format('{0}/build/reports/tests/test/**', env.PROJECT_DIR)) != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-report
-          path: build/reports/tests/test/
+          path: ${{ env.PROJECT_DIR }}/build/reports/tests/test/
+
+      - name: Upload raw XML (fallback)
+        if: always() && ${{ hashFiles(format('{0}/build/test-results/test/**', env.PROJECT_DIR)) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-xml
+          path: ${{ env.PROJECT_DIR }}/build/test-results/test/
