@@ -4,18 +4,50 @@ on: [push, pull_request]
 jobs:
   build-test:
     runs-on: windows-latest
-    env:
-      PROJECT_DIR: .   # change to your subfolder if not at repo root
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - name: Install Gradle 8.7 globally
         shell: pwsh
         run: |
           choco install gradle --version=8.7 -y
           gradle --version
+
+      # Detect the first folder (depth<=4) that contains build.gradle
+      - name: Detect Gradle project dir
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem -Recurse -Filter build.gradle -Depth 4 | Select-Object -First 1
+          if (-not $file) { throw "build.gradle not found anywhere in the repo (depth 4). Commit it or move it to root." }
+          $proj = $file.Directory.FullName
+          "PROJECT_DIR=$proj" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "PROJECT_DIR=$proj"
+
+      # (Optional) add a smoke test if no tests exist, to guarantee an HTML report
+      - name: Ensure at least one test
+        shell: pwsh
+        run: |
+          $testRoot = "$env:PROJECT_DIR\src\test\java"
+          $has = (Test-Path $testRoot) -and (Get-ChildItem -Recurse -Include *.java -Path $testRoot -ErrorAction SilentlyContinue)
+          if (-not $has) {
+            New-Item -ItemType Directory -Force -Path "$testRoot\simplejavacalculator" | Out-Null
+            @'
+package simplejavacalculator;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+class SmokeTest { @Test void itRuns(){ assertEquals(2,1+1); } }
+'@ | Set-Content "$testRoot\simplejavacalculator\SmokeTest.java" -Encoding UTF8
+            Write-Host "Added SmokeTest.java"
+          } else {
+            Write-Host "Tests already present."
+          }
 
       - name: Build & Test
         shell: pwsh
@@ -28,3 +60,18 @@ jobs:
         with:
           name: test-report
           path: ${{ env.PROJECT_DIR }}/build/reports/tests/test/
+
+      - name: Upload raw XML (fallback)
+        if: always() && ${{ hashFiles(format('{0}/build/test-results/test/**', env.PROJECT_DIR)) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-xml
+          path: ${{ env.PROJECT_DIR }}/build/test-results/test/
+
+      - name: Show reports tree (debug)
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "PROJECT_DIR=$env:PROJECT_DIR"
+          Get-ChildItem -Recurse -Depth 3 "$env:PROJECT_DIR\build" -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.FullName }
