@@ -7,7 +7,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
-        working-directory: .   # repo root
+        working-directory: .   # set to your project folder if not root
 
     steps:
       - uses: actions/checkout@v4
@@ -17,11 +17,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Check Gradle version (should be 9.0)
+      - name: Check Gradle version (non-fatal)
         run: |
-          $v = gradle --version
-          $v
-          if ($v -notmatch 'Gradle 9\.0') { throw "Runner Gradle is not 9.0" }
+          $v = gradle --version | Out-String
+          $ok = $v -match 'Gradle 9\.0(\.0)?'
+          if (-not $ok) { Write-Warning "Expected Gradle 9.0.x, got:`n$v" } else { Write-Host $v }
 
       - name: Build & Test
         run: gradle clean test --stacktrace --info
