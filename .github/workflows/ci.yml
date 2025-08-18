@@ -10,9 +10,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Gradle 8.7 globally
+      - name: Install Gradle 9.0 globally
         shell: pwsh
-        run: choco install gradle --version=8.7 -y
+        run: choco install gradle --version=9.0 -y
       - name: Build & Test
         shell: pwsh
         run: gradle clean test --stacktrace --info
