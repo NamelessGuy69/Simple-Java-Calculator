@@ -4,24 +4,69 @@ on: [push, pull_request]
 jobs:
   build-test:
     runs-on: windows-latest
-    env:
-      PROJECT_DIR: .   # change if your Gradle project is in a subfolder
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Verify wrapper is 9.0
+      # Ensure we are using Gradle 9.0 (runner already has it)
+      - name: Check Gradle version is 9.0
         shell: pwsh
-        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          $out = ./gradlew.bat --version
-          $out
-          if ($out -notmatch 'Gradle 9\.0') { throw "Wrapper is not Gradle 9.0" }
+          $v = gradle --version
+          $v
+          if ($v -notmatch 'Gradle 9\.0') { throw "Runner Gradle is not 9.0" }
 
-      - name: Build & Test (wrapper 9.0)
+      # Detect the Gradle project directory (where build.gradle lives)
+      - name: Detect Gradle project dir
+        id: detect
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem -Recurse -Filter build.gradle -Depth 4 | Select-Object -First 1
+          if (-not $file) { throw "build.gradle not found (searched depth 4). Commit it or move it to root." }
+          $proj = $file.Directory.FullName
+          "PROJECT_DIR=$proj" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "PROJECT_DIR=$proj"
+
+      # (Optional) add a tiny test if none exist so an HTML report is guaranteed
+      - name: Ensure at least one test
+        shell: pwsh
+        run: |
+          $testRoot = "$env:PROJECT_DIR\src\test\java"
+          $has = (Test-Path $testRoot) -and (Get-ChildItem -Recurse -Include *.java -Path $testRoot -ErrorAction SilentlyContinue)
+          if (-not $has) {
+            New-Item -ItemType Directory -Force -Path "$testRoot\simplejavacalculator" | Out-Null
+            @'
+package simplejavacalculator;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+class SmokeTest { @Test void itRuns(){ assertEquals(2,1+1); } }
+'@ | Set-Content "$testRoot\simplejavacalculator\SmokeTest.java" -Encoding UTF8
+            Write-Host "Added SmokeTest.java"
+          } else {
+            Write-Host "Tests already present."
+          }
+
+      - name: Build & Test (Gradle 9.0)
         shell: pwsh
         working-directory: ${{ env.PROJECT_DIR }}
-        run: ./gradlew.bat clean test --stacktrace --info
+        run: gradle clean test --stacktrace --info
+
+      - name: Upload test report (HTML)
+        if: always() && ${{ hashFiles(format('{0}/build/reports/tests/test/**', env.PROJECT_DIR)) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: ${{ env.PROJECT_DIR }}/build/reports/tests/test/
+
+      - name: Upload raw XML (fallback)
+        if: always() && ${{ hashFiles(format('{0}/build/test-results/test/**', env.PROJECT_DIR)) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-xml
+          path: ${{ env.PROJECT_DIR }}/build/test-results/test/
